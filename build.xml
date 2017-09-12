@@ -1,0 +1,38 @@
+<?xml version="1.0"?>
+<project name="SoftleanService" basedir="." default="jar">    
+	<property name="src" value="${basedir}"/>    
+	<property name="output" value="/home/srimanta/erp/authprovider/build"/>	
+	<property name="libpath" value="/home/srimanta/erp/authprovider/WebContent/WEB-INF/lib"/>
+	<property name="jarpath" value="/home/srimanta/erp/bidcrm/WebContent/WEB-INF/lib"/>
+	<property name="taskpath" value="/home/srimanta/erp/bidcrmtask/WebContent/WEB-INF/lib"/>
+	<target name="compile" depends="create">        
+		<javac destdir="${output}"  debug="on">                        
+			<src path="${src}"/>                        
+			<classpath refid="java"/>        
+		</javac>    
+	</target>    
+	<target name="jar" depends="compile">        
+		<jar destfile="${libpath}/authservice.jar">            
+			<fileset dir="${output}"/>        
+		</jar>
+	</target>
+	<target name="copy" depends="jar">
+		<copy file="${libpath}/authservice.jar" tofile="${jarpath}/authservice.jar" overwrite="true" />
+		<copy file="${libpath}/authservice.jar" tofile="${taskpath}/authservice.jar" overwrite="true" />
+	</target>
+	
+	<target name="clean">        
+		<delete dir="${output}"/>    
+	</target>    
+	<target name="create" depends="clean">        
+		<mkdir dir="${output}"/>    
+	</target>    
+	<path id="java">        
+		<fileset dir="${libpath}">            
+			<include name="*.jar"/> 
+		</fileset> 
+		<fileset dir="${libpath}/jersey">            
+			<include name="*.jar"/> 
+		</fileset> 
+	</path>
+</project>
