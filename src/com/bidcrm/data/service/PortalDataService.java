@@ -2,7 +2,8 @@
 	package com.bidcrm.data.service;
 
 
-	import java.util.Map;
+	import java.util.HashMap;
+import java.util.Map;
 
 import javax.servlet.ServletConfig;
 import javax.servlet.http.HttpServletRequest;
@@ -21,12 +22,14 @@ import javax.ws.rs.GET;
 	import org.json.JSONObject;
 
 import com.bidcrm.auth.dao.EmailDao;
+import com.bidcrm.data.vo.ChannelVo;
 
 import cms.service.app.ServiceManager;
 	import cms.service.exceptions.AuthenticationException;
 	import cms.service.template.TemplateTable;
 	import cms.service.template.TemplateUtility;
 	import cms.service.util.Base64Util;
+import cms.service.util.PrintTime;
 
 
 	//Use this URI resource with Base URL to access Account
@@ -34,6 +37,7 @@ import cms.service.app.ServiceManager;
 	public class PortalDataService {
 		static Log logger = LogFactory.getLog(ImportDataService.class);
 		TemplateUtility tu= new TemplateUtility();
+		
 	
 		// Get all contextual objects for this class
 		@Context UriInfo uriInfo;
@@ -88,7 +92,7 @@ import cms.service.app.ServiceManager;
 			String userlogin="";
 			try {
 				if(!tu.isEmptyValue(username)){
-					TemplateTable user=tu.getResultSet("select loginname||';'||password as userlogin " 
+					TemplateTable user=tu.getResultSet("select loginname||';'||objid as userlogin " 
 				+ "from table_user where loginname='"+username+"' and groupuser='"+groupuser+"'");
 					if(user!=null &&user.getRowCount()>0){
 						userlogin=user.getFieldValue("userlogin", user.getRowCount()-1);
@@ -121,26 +125,91 @@ import cms.service.app.ServiceManager;
 		  return Response.status(200).entity(data.toString()).build();
 		}
 		
-		// Get all rows for Account
-		// Creates EmailResponse record with originid=EmailSettingId. DestinitionId=EmailContactId
+		/*
+		 *  Input to view channelMap {id}= [channelcode]-[campaignid]  Ex: contact--campaignid
+		 *  
+		 *  Input to forward via email to capture emailresponse
+		 *  
+		 *  Input to view channelMap {id}= [channelcode]-[campaignid]-[emailsettingid]-[emailcontactid]
+		 *  Get all rows for Account
+		
+		 Creates EmailResponse record with originid=EmailSettingId. DestinitionId=EmailContactId
+		 */
+		
 		@GET
 		@Path("/{id}/forward.do")
 		@Produces({"application/json"})
 		public Response forwardLink() throws JSONException, AuthenticationException {
 			JSONObject data= new JSONObject();
 			Map<String,String> userdata=null;
+			String uri=uriInfo.getBaseUri().toString();
 			String id=uriInfo.getPathParameters().getFirst("id");
-			String linkname=uriInfo.getQueryParameters().getFirst("link");
-			String urlpath=uriInfo.getPath();
+			String forwardlink=uriInfo.getQueryParameters().getFirst("forwardlink");
+			String useraction="";
+			String campaignid="";
+			String contactid="";
+			String emailsettingid="";
+			String linkname="";
+			String stagecode="";
+			String responsestatus="";
 			String objid="";
+			String[] items=null;
+			if(!tu.isEmptyValue(id)) {
+				items=id.split("-");
+				if(items.length<2) {
+					data.put("status", "failed");
+					data.put("error", "Wrong id! id format should be [channelcode]-[campaignid]-[emailsettingid]-[emailcontactid]");
+					data.put("url", uri);
+					return Response.status(200).entity(data.toString()).build();
+				}else {
+					useraction=items[0];
+					campaignid=items[1];
+					if(items.length==3) {
+						emailsettingid=items[2];
+					}
+					if(items.length==4) {
+						emailsettingid=items[2];
+						contactid=items[3];
+					}
+				}
+				if(!tu.isEmptyValue(forwardlink) && forwardlink.contains("http")){
+					linkname=forwardlink;
+				}else {
+					String channelSql="select *from table_channelmap where upper(channelscode)=upper('"+useraction+"') "
+							+ "and campaignid='"+campaignid+"'";
+					TemplateTable channeldata=tu.getResultSet(channelSql);
+					if(channeldata!=null && channeldata.getRowCount()>0) {
+						String useexternal=channeldata.getFieldValue("useexternal", channeldata.getRowCount()-1);
+						String externallink=channeldata.getFieldValue("externallink", channeldata.getRowCount()-1);
+						if(!tu.isEmptyValue(useexternal)&& useexternal.equals("1") 
+								&&!tu.isEmptyValue(externallink) && (externallink.contains("http://")||externallink.contains("https://"))) {
+							linkname=externallink;
+						}else {
+							String genuser=channeldata.getFieldValue("genuser", channeldata.getRowCount()-1);
+							String userid=channeldata.getFieldValue("userid", channeldata.getRowCount()-1);
+							String userlogin=genuser+";"+userid;
+							String portaltoken="";
+							try {
+								portaltoken = new String(Base64Util.encode(userlogin.trim().getBytes()));
+							} catch (Exception e) {
+								// TODO Auto-generated catch block
+								e.printStackTrace();
+							}
+							
+							String action=new ChannelVo().getChannelDbObject(useraction.toLowerCase());
+							linkname=uri.replace("/rest/", "/portal?channel="+useraction+"&referer="+contactid+"&action="+action.toLowerCase()+"-"+campaignid+"&setter="+emailsettingid+"&servicekey="+portaltoken);
+							
+						}
+					}
+				}
+			}
 			try {
 				if(!tu.isEmptyValue(linkname)) {
 					getForwardUrl(response,linkname);
 				}
-				if(!tu.isEmptyValue(id)){
-					String campaignid=id.split("-")[0];
-					String contactid=id.split("-")[1];
-					String emailsettingid=id.split("-")[2];
+				
+				if(!tu.isEmptyValue(contactid)){
+					
 					TemplateTable user=tu.getResultSet("select *from table_emailcontact where objid='"+contactid+"'");
 					if(user!=null &&user.getRowCount()>0){
 					
@@ -154,42 +223,72 @@ import cms.service.app.ServiceManager;
 						data.put("genuser", user.getFieldValue("genuser", user.getRowCount()-1));
 						data.put("emailcontact2emaillist", user.getFieldValue("emailcontact2emaillist", user.getRowCount()-1));
 					}
+					TemplateTable emailsetting=tu.getResultSet("select *from table_emailsetting where objid='"+emailsettingid+"'");
+					if(emailsetting!=null &&emailsetting.getRowCount()>0) {
+						stagecode=emailsetting.getFieldValue("STAGECODE", emailsetting.getRowCount()-1);
+						data.put("stagecode", stagecode);
+					}
 					String ressql="select *from table_emailresponse where email='"+user.getFieldValue("email", user.getRowCount()-1)
 					+"' and emailresponse2campaign='"+campaignid+"'";
 					TemplateTable result= tu.getResultSet(ressql);
 					if(result==null ||result.getRowCount()==0){
 						objid=tu.getPrimaryKey();
 						String instr="Insert into TABLE_EMAILRESPONSE (OBJID,NAME,LASTNAME,EMAIL,PHONE,PHONE2,STATUS,STAGECODE,RESPONSEDATE,"
-								+ "opened,EMAILRESPONSE2CAMPAIGN,ORIGINID,DESTINITIONID,GROUPUSER,GENUSER,GENDATE) values ("
+								+ "opened,EMAILRESPONSE2CAMPAIGN,ORIGINID,DESTINITIONID,GROUPUSER,GENUSER,GENDATE,MODUSER,MODDATE) values ("
 								+ objid+",'"+data.get("firstname")
 								+"','"+data.get("lastname")
 								+"','"+data.get("email")
 								+"','"+data.get("mobile")
 								+"','"+data.get("phone")
 								+"','Opened'"
-								+ ",null,sysdate,1,'"
+								+ ",'"+stagecode+"',sysdate,1,'"
 								+campaignid+"','"
 								+emailsettingid+"','"
 								+contactid
 								+"','"+data.get("groupuser")
 								+"','"+data.get("genuser")
-								+ "',sysdate,"
+								+ "',sysdate"
 								+",'"+data.get("genuser")
 								+ "',sysdate)";
 						
 						tu.getResultSet(instr);
+						responsestatus=useraction+" Opened";
 
 					}else{
+						responsestatus=useraction+" Clicked";
 						objid=result.getFieldValue("objid", user.getRowCount()-1);
-						String upsql=" update table_emailresponse set status='Link Clicked' , clicked=to_number(nvl(clicked,0))+1,moddate=sysdate,originid='"
-						+emailsettingid+"' where objid='"+objid+"'";
+						String upsql=" update table_emailresponse set status='"+useraction+" Clicked' , clicked=to_number(nvl(clicked,0))+1,moddate=sysdate,originid='"
+						+emailsettingid+"',stagecode='"+stagecode+"' where objid='"+objid+"'";
 						tu.executeQuery(upsql);
 					}
+					//insert automation log entry
+					PrintTime time= new PrintTime();
+					String now=time.getDateByFormat(0, null);
+					String title=data.get("firstname")+ " "+data.get("lastname")+" opened link related to channel="+useraction;
+					
+					String insertauto="Insert into TABLE_AUTOMATIONLOG (OBJID,NAME,DESCRIPTION,STAGECODE,CHANNELSCODE,STATUS,"+
+							"AUTOMATIONLOG2EMAILSETTING,AUTOMATIONLOG2EMAILRESPONSE,BQN,ORIGINID,DESTINITIONID,"+
+							"GROUPUSER,GENUSER,GENDATE,MODUSER,MODDATE) values ("+
+									tu.getPrimaryKey()+",'"+
+							        title+"','"+
+									" Forwarded link " +linkname.replaceAll("\\?", "%3F")+ " at "+now+"','"+
+									stagecode+"','"+
+									useraction+"','"+
+									responsestatus+"','"+
+									emailsettingid+"',"+
+									(objid.indexOf("'")>=0?objid:"'"+objid+"'")+","+
+									"null,null,null,'"+
+									data.get("genuser")+"','"+
+									data.get("groupuser")+"',"+
+									"sysdate,null,null)";
+					
+					tu.executeQuery(insertauto);
+					
 					data.put("status", "success");
 					data.put("linkname", "linkname");
 					data.put("campaignid", campaignid);
 					data.put("contactid", contactid);
-					data.put("url", urlpath);
+					data.put("url", linkname);
 					
 					assignEmailResponse( campaignid, objid,
 							data.get("groupuser").toString(), data);
@@ -197,7 +296,7 @@ import cms.service.app.ServiceManager;
 				
 					data.put("status", "failed");
 					data.put("linkname", "linkname");
-					data.put("url", urlpath);
+					data.put("url", linkname);
 				}
 				
 			
@@ -225,56 +324,72 @@ import cms.service.app.ServiceManager;
 			String urlpath=uriInfo.getPath();
 			try {
 				if(!tu.isEmptyValue(id)){
-					String campaignid=id.split("-")[0];
-					String contactid=id.split("-")[1];
-					String emailsettingid=id.split("-")[2];
-					String objid="";
-					TemplateTable user=tu.getResultSet("select *from table_emailcontact where objid='"+contactid+"'");
-					if(user!=null &&user.getRowCount()>0){
-					
-						data.put("firstname", user.getFieldValue("firstname", user.getRowCount()-1));
-						data.put("lastname", user.getFieldValue("lastname", user.getRowCount()-1));
-						data.put("email", user.getFieldValue("email", user.getRowCount()-1));
-						data.put("mobile", user.getFieldValue("phone", user.getRowCount()-1));
-						data.put("phone", user.getFieldValue("phone2", user.getRowCount()-1));
-						data.put("industry", user.getFieldValue("industry", user.getRowCount()-1));
-						data.put("groupuser", user.getFieldValue("groupuser", user.getRowCount()-1));
-						data.put("genuser", user.getFieldValue("genuser", user.getRowCount()-1));
-						data.put("emailcontact2emaillist", user.getFieldValue("emailcontact2emaillist", user.getRowCount()-1));
+					String[] items=null;
+					String campaignid=null;
+					String contactid=null;
+					String emailsettingid=null;
+					try {
+						items=id.split("-");
+					}catch(Exception e) {
+						e.printStackTrace();
 					}
-					String ressql="select *from table_emailresponse where email='"+user.getFieldValue("email", user.getRowCount()-1)
-					+"' and emailresponse2campaign='"+campaignid+"'";
-					TemplateTable result= tu.getResultSet(ressql);
-					if(result==null ||result.getRowCount()==0){
-						objid=tu.getPrimaryKey();
-						String instr="Insert into TABLE_EMAILRESPONSE (OBJID,NAME,LASTNAME,EMAIL,PHONE,PHONE2,STATUS,STAGECODE,RESPONSEDATE,"
-								+ "opened,EMAILRESPONSE2CAMPAIGN,ORIGINID,DESTINITIONID,GROUPUSER,GENUSER,GENDATE,MODUSER,MODDATE) values ("
-								+ objid+",'"+data.get("firstname")
-								+"','"+data.get("lastname")
-								+"','"+data.get("email")
-								+"','"+data.get("mobile")
-								+"','"+data.get("phone")
-								+"','Opened'"
-								+ ",null,sysdate,1,'"
-								+campaignid+"','"
-								+emailsettingid+"','" //used for automation
-								+contactid
-								+"','"+data.get("groupuser")
-								+"','"+data.get("genuser")
-								+ "',sysdate,"
-								+",'"+data.get("genuser")
-								+ "',sysdate)";
+					if(items.length>0) {
+						campaignid=items[0];
+						contactid=items[1];
+						emailsettingid=items[2];
+						String objid="";
+						TemplateTable result=null;
+						TemplateTable user=tu.getResultSet("select *from table_emailcontact where objid='"+contactid+"'");
+						if(user!=null &&user.getRowCount()>0){
 						
-						tu.getResultSet(instr);
+							data.put("firstname", user.getFieldValue("firstname", user.getRowCount()-1));
+							data.put("lastname", user.getFieldValue("lastname", user.getRowCount()-1));
+							data.put("email", user.getFieldValue("email", user.getRowCount()-1));
+							data.put("mobile", user.getFieldValue("phone", user.getRowCount()-1));
+							data.put("phone", user.getFieldValue("phone2", user.getRowCount()-1));
+							data.put("industry", user.getFieldValue("industry", user.getRowCount()-1));
+							data.put("groupuser", user.getFieldValue("groupuser", user.getRowCount()-1));
+							data.put("genuser", user.getFieldValue("genuser", user.getRowCount()-1));
+							data.put("emailcontact2emaillist", user.getFieldValue("emailcontact2emaillist", user.getRowCount()-1));
+							
+							String ressql="select *from table_emailresponse where email='"+user.getFieldValue("email", user.getRowCount()-1)
+							+"' and emailresponse2campaign='"+campaignid+"'";
+							 result= tu.getResultSet(ressql);
+						}
+					
+						if(result==null ||result.getRowCount()==0){
+							objid=tu.getPrimaryKey();
+							String instr="Insert into TABLE_EMAILRESPONSE (OBJID,NAME,LASTNAME,EMAIL,PHONE,PHONE2,STATUS,STAGECODE,RESPONSEDATE,"
+									+ "opened,EMAILRESPONSE2CAMPAIGN,ORIGINID,DESTINITIONID,GROUPUSER,GENUSER,GENDATE,MODUSER,MODDATE) values ("
+									+ objid+",'"+data.get("firstname")
+									+"','"+data.get("lastname")
+									+"','"+data.get("email")
+									+"','"+data.get("mobile")
+									+"','"+data.get("phone")
+									+"','Opened'"
+									+ ",null,sysdate,1,'"
+									+campaignid+"','"
+									+emailsettingid+"','" //used for automation
+									+contactid
+									+"','"+data.get("groupuser")
+									+"','"+data.get("genuser")
+									+ "',sysdate,"
+									+",'"+data.get("genuser")
+									+ "',sysdate)";
+							
+							tu.getResultSet(instr);
 
-					}else{
-						objid=result.getFieldValue("objid", user.getRowCount()-1);
-						String upsql=" update table_emailresponse set status='Opened' , opened=to_number(nvl(opened,0))+1,moddate=sysdate,originid='"
-						+emailsettingid+"' where objid='"+objid+"'";
-						tu.executeQuery(upsql);
+						}else{
+							objid=result.getFieldValue("objid", user.getRowCount()-1);
+							String upsql=" update table_emailresponse set status='Opened' , opened=to_number(nvl(opened,0))+1,moddate=sysdate,originid='"
+							+emailsettingid+"' where objid='"+objid+"'";
+							tu.executeQuery(upsql);
+						}
+						assignEmailResponse( campaignid, objid,
+								data.get("groupuser").toString(), data);
 					}
-					assignEmailResponse( campaignid, objid,
-							data.get("groupuser").toString(), data);
+					
+					
 				}
 				
 				data.put("status", "success");
@@ -305,61 +420,77 @@ import cms.service.app.ServiceManager;
 			String objid="";
 			try {
 				if(!tu.isEmptyValue(id)){
-					String campaignid=id.split("-")[0];
-					String contactid=id.split("-")[1];
-					String emailsettingid=id.split("-")[2];
-					TemplateTable user=tu.getResultSet("select *from table_emailcontact where objid='"+contactid+"'");
-					if(user!=null &&user.getRowCount()>0){
-					
-						data.put("firstname", user.getFieldValue("firstname", user.getRowCount()-1));
-						data.put("lastname", user.getFieldValue("lastname", user.getRowCount()-1));
-						data.put("email", user.getFieldValue("email", user.getRowCount()-1));
-						data.put("mobile", user.getFieldValue("phone", user.getRowCount()-1));
-						data.put("phone", user.getFieldValue("phone2", user.getRowCount()-1));
-						data.put("industry", user.getFieldValue("industry", user.getRowCount()-1));
-						data.put("groupuser", user.getFieldValue("groupuser", user.getRowCount()-1));
-						data.put("genuser", user.getFieldValue("genuser", user.getRowCount()-1));
-						data.put("emailcontact2emaillist", user.getFieldValue("emailcontact2emaillist", user.getRowCount()-1));
+					String[] items=null;
+					String campaignid=null;
+					String contactid=null;
+					String emailsettingid=null;
+					TemplateTable result=null;
+					try {
+						items=id.split("-");
+					}catch(Exception e) {
+						e.printStackTrace();
 					}
-					String ressql="select *from table_emailresponse where email='"+user.getFieldValue("email", user.getRowCount()-1)
-					+"' and emailresponse2campaign='"+campaignid+"'";
-					TemplateTable result= tu.getResultSet(ressql);
-					if(result==null ||result.getRowCount()==0){
-						objid=tu.getPrimaryKey();
-						String instr="Insert into TABLE_EMAILRESPONSE (OBJID,NAME,LASTNAME,EMAIL,PHONE,PHONE2,STATUS,STAGECODE,RESPONSEDATE,"
-								+ "opened,EMAILRESPONSE2CAMPAIGN,ORIGINID,DESTINITIONID,GROUPUSER,GENUSER,GENDATE) values ("
-								+ objid+",'"+data.get("firstname")
-								+"','"+data.get("lastname")
-								+"','"+data.get("email")
-								+"','"+data.get("mobile")
-								+"','"+data.get("phone")
-								+"','Opened'"
-								+ ",null,sysdate,1,'"
-								+campaignid+"','"
-								+emailsettingid+"','"
-								+contactid
-								+"','"+data.get("groupuser")
-								+"','"+data.get("genuser")
-								+ "',sysdate,"
-								+",'"+data.get("genuser")
-								+ "',sysdate)";
-						
-						tu.getResultSet(instr);
+					if(items.length>0) {
+						campaignid=items[0];
+						contactid=items[1];
+						emailsettingid=items[2];
 
-					}else{
-						objid=result.getFieldValue("objid", user.getRowCount()-1);
-						String upsql=" update table_emailresponse set status='Clicked' , clicked=to_number(nvl(clicked,0))+1,moddate=sysdate,originid='"
-						+emailsettingid+"' where objid='"+objid+"'";
-						tu.executeQuery(upsql);
+						TemplateTable user=tu.getResultSet("select *from table_emailcontact where objid='"+contactid+"'");
+						if(user!=null &&user.getRowCount()>0){
+						
+							data.put("firstname", user.getFieldValue("firstname", user.getRowCount()-1));
+							data.put("lastname", user.getFieldValue("lastname", user.getRowCount()-1));
+							data.put("email", user.getFieldValue("email", user.getRowCount()-1));
+							data.put("mobile", user.getFieldValue("phone", user.getRowCount()-1));
+							data.put("phone", user.getFieldValue("phone2", user.getRowCount()-1));
+							data.put("industry", user.getFieldValue("industry", user.getRowCount()-1));
+							data.put("groupuser", user.getFieldValue("groupuser", user.getRowCount()-1));
+							data.put("genuser", user.getFieldValue("genuser", user.getRowCount()-1));
+							data.put("emailcontact2emaillist", user.getFieldValue("emailcontact2emaillist", user.getRowCount()-1));
+						    
+							String ressql="select *from table_emailresponse where email='"+user.getFieldValue("email", user.getRowCount()-1)
+							+"' and emailresponse2campaign='"+campaignid+"'";
+							result= tu.getResultSet(ressql);
+						}
+						
+						if(result==null ||result.getRowCount()==0){
+							objid=tu.getPrimaryKey();
+							String instr="Insert into TABLE_EMAILRESPONSE (OBJID,NAME,LASTNAME,EMAIL,PHONE,PHONE2,STATUS,STAGECODE,RESPONSEDATE,"
+									+ "opened,EMAILRESPONSE2CAMPAIGN,ORIGINID,DESTINITIONID,GROUPUSER,GENUSER,GENDATE) values ("
+									+ objid+",'"+data.get("firstname")
+									+"','"+data.get("lastname")
+									+"','"+data.get("email")
+									+"','"+data.get("mobile")
+									+"','"+data.get("phone")
+									+"','Opened'"
+									+ ",null,sysdate,1,'"
+									+campaignid+"','"
+									+emailsettingid+"','"
+									+contactid
+									+"','"+data.get("groupuser")
+									+"','"+data.get("genuser")
+									+ "',sysdate,"
+									+",'"+data.get("genuser")
+									+ "',sysdate)";
+							
+							tu.getResultSet(instr);
+
+						}else{
+							objid=result.getFieldValue("objid", user.getRowCount()-1);
+							String upsql=" update table_emailresponse set status='Clicked' , clicked=to_number(nvl(clicked,0))+1,moddate=sysdate,originid='"
+							+emailsettingid+"' where objid='"+objid+"'";
+							tu.executeQuery(upsql);
+						}
+						data.put("status", "success");
+						data.put("linkname", "linkname");
+						data.put("campaignid", campaignid);
+						data.put("contactid", contactid);
+						data.put("url", urlpath);
+						
+						assignEmailResponse( campaignid, objid,
+								data.get("groupuser").toString(), data);
 					}
-					data.put("status", "success");
-					data.put("linkname", "linkname");
-					data.put("campaignid", campaignid);
-					data.put("contactid", contactid);
-					data.put("url", urlpath);
 					
-					assignEmailResponse( campaignid, objid,
-							data.get("groupuser").toString(), data);
 				}else{
 				
 					data.put("status", "failed");

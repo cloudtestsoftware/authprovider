@@ -51,10 +51,7 @@ public class EmailResponseSenderDao extends EmailClickerImpl {
 		String emailcontentreplaced = "";
 		String emailcontactid = "";
 		JSONObject contactlist = new JSONObject();
-		String clickerscript = "";
-		String portalurl = "";
-		String surveyurl = "";
-		String videourl = "";
+		
 		String channelscode = "";
 		String emailsettingid = "";
 		String firstname = "";
@@ -124,27 +121,12 @@ public class EmailResponseSenderDao extends EmailClickerImpl {
 									|| attrval.contains("/bidcrm")) {
 								attrval = attrval.replaceAll(" ", "");
 							}
-							/*
-							 * if(!tu.isEmptyValue(attrtype) &&
-							 * (attrtype.equalsIgnoreCase("link")||attrtype.equalsIgnoreCase("image"))){
-							 * //clickerscript+=getVar(attrname,attrval); String
-							 * alink=getLinkText(attrval,linktext); if(tu.isEmptyValue(linktext)){
-							 * linktext="Click Here"; } emailcontent=emailcontent.replace("@"+attrname,
-							 * alink); }else{ emailcontent=emailcontent.replace("@"+attrname, attrval); }
-							 */
+							
 							emailcontent = emailcontent.replace("@" + attrname, attrval);
 						}
 					}
 				}
-				/*
-				 * //replace portalurl and surveyurl if(!tu.isEmptyValue(campaignid)){
-				 * TemplateTable
-				 * campaign=tu.getResultSet("select *from table_campaign where objid='"
-				 * +campaignid+"'"); if(campaign!=null && campaign.getRowCount()>0){
-				 * surveyurl=campaign.getFieldValue("surveyurl", campaign.getRowCount()-1);
-				 * videourl=campaign.getFieldValue("videourl", campaign.getRowCount()-1); } }
-				 */
-
+				
 				emailcontentreplaced = emailcontent;
 				if (!tu.isEmptyValue(firstname)) {
 					emailcontentreplaced = emailcontentreplaced.replaceAll("Hi there", "Hi " + firstname);
@@ -155,45 +137,17 @@ public class EmailResponseSenderDao extends EmailClickerImpl {
 					emailcontentreplaced = emailcontentreplaced.replaceAll("Hello", "Hi " + firstname);
 
 				}
-
-				String userlogin = "";
-				if (!tu.isEmptyValue(username)) {
-					TemplateTable user = tu.getResultSet("select loginname||';'||password as userlogin "
-							+ "from table_user where loginname='" + username + "' and groupuser='" + groupuser + "'");
-					if (user != null && user.getRowCount() > 0) {
-						userlogin = user.getFieldValue("userlogin", user.getRowCount() - 1);
-					}
-				}
-
-				String portaltoken = new String(Base64Util.encode(userlogin.trim().getBytes()));
+				
 
 				HashMap<String, String> portaldata = new HashMap<String, String>();
-				portaldata.put("portaltoken", portaltoken);
 				portaldata.put("baseurl", baseurl);
+				portaldata.put("channelscode", channelscode);
 				portaldata.put("campaignid", campaignid);
 				portaldata.put("emailsettingid", emailsettingid);
 				portaldata.put("emailcontactid", emailcontactid);
 
 				emailcontentreplaced = getEmailContentWithChannels(portaldata, emailcontentreplaced);
-				/*
-				 * portalurl=baseurl.replace("/rest/",
-				 * "/portal&#63;referer="+emailcontactid+"&action=sampleportal-"+campaignid+
-				 * "&setter="+emailsettingid+"&servicekey=");
-				 * 
-				 * 
-				 * if(!tu.isEmptyValue(portalurl)){
-				 * 
-				 * portalurl=portalurl+portaltoken;
-				 * 
-				 * portalurl="<a href=\""+portalurl+"\">Click Here</a>";
-				 * emailcontentreplaced=emailcontentreplaced.replace("@portalurl", portalurl); }
-				 * if(!tu.isEmptyValue(surveyurl)){
-				 * 
-				 * emailcontentreplaced=emailcontentreplaced.replace("@surveyurl", surveyurl); }
-				 * if(!tu.isEmptyValue(videourl)){
-				 * 
-				 * emailcontentreplaced=emailcontentreplaced.replace("@videourl", videourl); }
-				 */
+				
 				try {
 					doSetup();
 					String imgurl = baseurl + "portal/" + campaignid + "-" + emailcontactid + "-" + emailsettingid
@@ -210,20 +164,8 @@ public class EmailResponseSenderDao extends EmailClickerImpl {
 						emailcontentreplaced += tracker;
 					}
 
-					/*
-					 * String
-					 * clickurl=baseurl+"portal/"+campaignid+"-"+emailcontactid+"-"+emailsettingid+
-					 * "/click.gif"; String script="\n<script>"+ "\n"+clickerscript+
-					 * "\n"+getClicker(clickurl)+ "\n</script>"; logger.info(script);
-					 * if(emailcontentreplaced.contains("@clicker")){
-					 * 
-					 * emailcontentreplaced+=emailcontentreplaced.replaceAll("@clicker", clickurl);
-					 * }else if(emailcontentreplaced.contains("<head>")){
-					 * emailcontentreplaced+=emailcontentreplaced.replace("<head>",
-					 * "<head>\n"+script); }else{ emailcontentreplaced+="<head>\n"+script+"</head>";
-					 * }
-					 */
-					logger.info(emailcontentreplaced);
+					
+					//logger.info(emailcontentreplaced);
 					// finally add script
 
 					if (sendmail(subject, emailcontentreplaced)) {
@@ -272,19 +214,13 @@ public class EmailResponseSenderDao extends EmailClickerImpl {
 		int sent = 0;
 		int failed = 0;
 		int total = 0;
-		String filepath = "";
-		String emailcontent = "";
+		
 		String emailcontentreplaced = "";
 		String emailcontactid = "";
 		JSONObject contactlist = new JSONObject();
-		String clickerscript = "";
-		String portalurl = "";
-		String surveyurl = "";
-		String videourl = "";
 		String channelscode = "";
 		String emailsettingid = "";
 		String firstname = "";
-		String templateid = "";
 		String baseurl = this.uriInfo.getBaseUri().toString();
 		String reminderid = "";
 		String emailresponseid = "";
@@ -336,20 +272,13 @@ public class EmailResponseSenderDao extends EmailClickerImpl {
 					String forwardid = campaignid + "-" + emailcontactid + "-" + emailsettingid;
 					emailcontentreplaced += "\n\nPlease click this below link for details.";
 					String forwradurl = baseurl.replace("/rest/",
-							"/portal/" + forwardid + "/forward.dp&#63;link=" + singlelink);
+							"/portal/" + forwardid + "/forward.do&#63;forwardlink=" + singlelink);
 
 					String link = "<a href=\"" + forwradurl + "\">Click this link</a>";
 					emailcontentreplaced += "\n" + link;
 
 				}
-				/*
-				 * //replace portalurl and surveyurl if(!tu.isEmptyValue(campaignid)){
-				 * TemplateTable
-				 * campaign=tu.getResultSet("select *from table_campaign where objid='"
-				 * +campaignid+"'"); if(campaign!=null && campaign.getRowCount()>0){
-				 * surveyurl=campaign.getFieldValue("surveyurl", campaign.getRowCount()-1);
-				 * videourl=campaign.getFieldValue("videourl", campaign.getRowCount()-1); } }
-				 */
+				
 
 				if (!tu.isEmptyValue(firstname)) {
 					emailcontentreplaced = emailcontentreplaced.replaceAll("Hi there", "Hi " + firstname);
@@ -360,45 +289,17 @@ public class EmailResponseSenderDao extends EmailClickerImpl {
 					emailcontentreplaced = emailcontentreplaced.replaceAll("Hello", "Hi " + firstname);
 
 				}
-
-				String userlogin = "";
-				if (!tu.isEmptyValue(username)) {
-					TemplateTable user = tu.getResultSet("select loginname||';'||password as userlogin "
-							+ "from table_user where loginname='" + username + "' and groupuser='" + groupuser + "'");
-					if (user != null && user.getRowCount() > 0) {
-						userlogin = user.getFieldValue("userlogin", user.getRowCount() - 1);
-					}
-				}
-
-				String portaltoken = new String(Base64Util.encode(userlogin.trim().getBytes()));
-
+				
 				HashMap<String, String> portaldata = new HashMap<String, String>();
-				portaldata.put("portaltoken", portaltoken);
+				
 				portaldata.put("baseurl", baseurl);
+				portaldata.put("channelscode", channelscode);
 				portaldata.put("campaignid", campaignid);
 				portaldata.put("emailsettingid", emailsettingid);
 				portaldata.put("emailcontactid", emailcontactid);
 
 				emailcontentreplaced = getEmailContentWithChannels(portaldata, emailcontentreplaced);
-				/*
-				 * portalurl=baseurl.replace("/rest/",
-				 * "/portal&#63;referer="+emailcontactid+"&action=sampleportal-"+campaignid+
-				 * "&setter="+emailsettingid+"&servicekey=");
-				 * 
-				 * 
-				 * if(!tu.isEmptyValue(portalurl)){
-				 * 
-				 * portalurl=portalurl+portaltoken;
-				 * 
-				 * portalurl="<a href=\""+portalurl+"\">Click Here</a>";
-				 * emailcontentreplaced=emailcontentreplaced.replace("@portalurl", portalurl); }
-				 * if(!tu.isEmptyValue(surveyurl)){
-				 * 
-				 * emailcontentreplaced=emailcontentreplaced.replace("@surveyurl", surveyurl); }
-				 * if(!tu.isEmptyValue(videourl)){
-				 * 
-				 * emailcontentreplaced=emailcontentreplaced.replace("@videourl", videourl); }
-				 */
+			
 				try {
 					doSetup();
 					String imgurl = baseurl + "portal/" + campaignid + "-" + emailcontactid + "-" + emailsettingid
@@ -414,21 +315,9 @@ public class EmailResponseSenderDao extends EmailClickerImpl {
 					} else {
 						emailcontentreplaced += tracker;
 					}
-					/*
-					 * String
-					 * clickurl=baseurl+"portal/"+campaignid+"-"+emailcontactid+"-"+emailsettingid+
-					 * "/click.gif"; String script="\n<script>"+ "\n"+clickerscript+
-					 * "\n"+getClicker(clickurl)+ "\n</script>"; logger.info(script);
-					 * if(emailcontentreplaced.contains("@clicker")){
-					 * 
-					 * emailcontentreplaced=emailcontentreplaced.replaceAll("@clicker", clickurl);
-					 * }else if(emailcontentreplaced.contains("<head>")){
-					 * emailcontentreplaced=emailcontentreplaced.replace("<head>",
-					 * "<head>\n"+script); }else{ emailcontentreplaced="<head>\n"+script+"</head>";
-					 * }
-					 */
+					
 
-					logger.info(emailcontentreplaced);
+					//logger.info(emailcontentreplaced);
 					// finally add script
 
 					if (sendmail(subject, emailcontentreplaced)) {

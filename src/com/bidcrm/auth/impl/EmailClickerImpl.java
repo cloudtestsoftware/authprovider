@@ -1,6 +1,10 @@
 package com.bidcrm.auth.impl;
 
 import java.util.HashMap;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+import cms.service.template.TemplateTable;
 
 public class EmailClickerImpl extends EmailImpl {
 
@@ -25,44 +29,73 @@ public class EmailClickerImpl extends EmailImpl {
 		return str;
 	}
 	
-	public String getForwardUrl(HashMap<String,String> portaldata) {
-		String url="";
-		String portaltoken=portaldata.get("portaltoken");
-		String campaignid=portaldata.get("campaignid");
-		String emailcontactid=portaldata.get("emailcontactid");
-		String emailsettingid=portaldata.get("emailsettingid");
-		String baseurl=portaldata.get("baseurl");
-		
-		return url;
-	}
 	
-	public String getEmailContentWithChannels(HashMap<String,String> portaldata ,String emailcontent) {
-		String portaltoken=portaldata.get("portaltoken");
-		String campaignid=portaldata.get("campaignid");
-		String emailcontactid=portaldata.get("emailcontactid");
-		String emailsettingid=portaldata.get("emailsettingid");
-		String baseurl=portaldata.get("baseurl");
-		String surveyurl="";
-		String videourl="";
-		String portalurl=baseurl.replace("/rest/", "/portal&#63;referer="+emailcontactid+"&action=sampleportal-"+campaignid+"&setter="+emailsettingid+"&servicekey=");
+	
+	//[channelcode]-[campaignid]-[emailsettingid]-[emailcontactid]
+	public String getEmailContentWithChannels(HashMap<String,String> data ,String emailcontent) {
 		
-		
-		if(!tu.isEmptyValue(portalurl)){
+		if(!tu.isEmptyValue(data.get("baseurl"))) {
 			
-			portalurl=portalurl+portaltoken;
+			//first replace any existing url with forward url
+			String id=data.get("channelscode")+"-"+data.get("campaignid")+"-"+data.get("emailsettingid")+"-"+data.get("emailcontactid");
+			String fordwardurl=data.get("baseurl").replace("/rest/", "/rest/portal/"+id+"/forward.do")+"?forwardlink=";
+			emailcontent=transformURLwithForward(emailcontent,fordwardurl);
 			
-			portalurl="<a href=\""+portalurl+"\">Click Here</a>";
-			emailcontent=emailcontent.replace("@portalurl", portalurl);
-		}
-		if(!tu.isEmptyValue(surveyurl)){
-		
-			emailcontent=emailcontent.replace("@surveyurl", surveyurl);
-		}
-		if(!tu.isEmptyValue(videourl)){
-		
-			emailcontent=emailcontent.replace("@videourl", videourl);
+			//add channelurl with channel attributes
+			//String channelmapsql="select *from table_channelmap where upper(channelscode)=upper('"+data.get("channelscode")+"') and "+
+			String channelmapsql="select *from table_channelmap where campaignid='"+data.get("campaignid")+"'";
+			
+			TemplateTable channelmap=tu.getResultSet(channelmapsql);
+			if(channelmap!=null && channelmap.getRowCount()>0) {
+				for(int i=0;i<channelmap.getRowCount();i++) {
+					String attr=channelmap.getFieldValue("shortattribute", i);
+					String channel=channelmap.getFieldValue("channelscode", i);
+					String chid=channel+"-"+data.get("campaignid")+"-"+data.get("emailsettingid")+"-"+data.get("emailcontactid");
+					
+					String fordward=data.get("baseurl").replace("/rest/", "/rest/portal/"+chid+"/forward.do");
+					emailcontent=emailcontent.replaceAll("#"+attr, fordward);
+					emailcontent=emailcontent.replaceAll("@"+attr, fordward);
+				}
+			}
 		}
 		
 		return emailcontent;
+	}
+	private String removeUrl(String commentstr)
+    {
+        String urlPattern = "((https?|ftp|gopher|telnet|file|Unsure|http):((//)|(\\\\))+[\\w\\d:#@%/;$()~_?\\+-=\\\\\\.&]*)";
+        Pattern p = Pattern.compile(urlPattern,Pattern.CASE_INSENSITIVE);
+        Matcher m = p.matcher(commentstr);
+        int i = 0;
+        while (m.find()) {
+            commentstr = commentstr.replaceAll(m.group(i),"").trim();
+            i++;
+        }
+        return commentstr;
+    }
+	
+	public String transformURLwithForward(String text,String forward){
+		String urlValidationRegex = "(https?|ftp|gopher|telnet|file|Unsure|http)://(www\\d?|[a-zA-Z0-9]+)?.[a-zA-Z0-9-]+(\\:|.)([a-zA-Z0-9.]+|(\\d+)?)([/?:].*)?";
+		Pattern p = Pattern.compile(urlValidationRegex);
+		Matcher m = p.matcher(text);
+		StringBuffer sb = new StringBuffer();
+		while(m.find()){
+		    String found =m.group(0); 
+		    m.appendReplacement(sb, forward+found); 
+		}
+		m.appendTail(sb);
+		return sb.toString();
+	}
+	public String transformURLIntoLinks(String text){
+		String urlValidationRegex = "(https?|ftp|gopher|telnet|file|Unsure|http)://(www\\d?|[a-zA-Z0-9]+)?.[a-zA-Z0-9-]+(\\:|.)([a-zA-Z0-9.]+|(\\d+)?)([/?:].*)?";
+		Pattern p = Pattern.compile(urlValidationRegex);
+		Matcher m = p.matcher(text);
+		StringBuffer sb = new StringBuffer();
+		while(m.find()){
+		    String found =m.group(0); 
+		    m.appendReplacement(sb, "<a href='"+found+"'>"+found+"</a>"); 
+		}
+		m.appendTail(sb);
+		return sb.toString();
 	}
 }
